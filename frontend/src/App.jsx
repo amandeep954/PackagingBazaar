@@ -14,6 +14,7 @@ import BecomeaSeller from "./pages/BecomeaSeller";
 import BecomeaBuyer from "./pages/BecomeaBuyer";
 import SellerDashboard from "./Seller/SellerDashboard";
 import AddProduct from "./Seller/AddProduct";
+import LoginPage from "./pages/LoginPage"
 
 export default function App() {
   return (
@@ -34,6 +35,7 @@ export default function App() {
               <Route path="/become-a-buyer" element={<BecomeaBuyer />} />
               <Route path="/seller/dashboard" element={<SellerDashboard />} />
               <Route path="/seller/add-product" element={<AddProduct />} />
+              <Route path="/login" element={<LoginPage />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </main>

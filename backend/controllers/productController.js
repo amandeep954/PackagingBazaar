@@ -159,3 +159,157 @@ export const getTopSellingProducts = async (req, res) => {
     res.status(500).json({ success: false, message: "Server Error" });
   }
 };
+
+export const addProduct = async (req, res) => {
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    const {
+      name,
+      sub_category_id,
+      tag_id,
+      thickness,
+      width,
+      price,
+      unit,
+      min_order,
+      stock,
+      image_url,
+      description,
+      applications,
+    } = req.body;
+
+    const seller_id = req.user.id; // verifyToken middleware se mil raha hai
+
+    // 1. Insert into products
+    const [productResult] = await connection.query(
+      `INSERT INTO products 
+      (name, sub_category_id, tag_id, seller_id, thickness, width, price, unit, description, image_url) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        name,
+        sub_category_id,
+        tag_id,
+        seller_id,
+        thickness,
+        width,
+        price,
+        unit,
+        description,
+        image_url,
+      ],
+    );
+
+    const productId = productResult.insertId;
+
+    // 2. Insert into product_stocks
+    await connection.query(
+      `INSERT INTO product_stocks (product_id, quantity, min_order) VALUES (?, ?, ?)`,
+      [productId, stock, min_order],
+    );
+
+    // 3. Insert Applications (Bulk Mapping Support)
+    if (applications && applications.length > 0) {
+      // Direct ID mapping logic (Agar frontend ID bhej raha hai toh directly dalo, warna pehle fetch karo)
+      const [appData] = await connection.query(
+        "SELECT id FROM applications WHERE app_name IN (?)",
+        [applications],
+      );
+
+      const mappingValues = appData.map((app) => [productId, app.id]);
+      if (mappingValues.length > 0) {
+        await connection.query(
+          "INSERT INTO product_application_mapping (product_id, app_id) VALUES ?",
+          [mappingValues],
+        );
+      }
+    }
+
+    await connection.commit();
+    res.status(201).json({
+      success: true,
+      message: "Product added successfully!",
+      productId,
+    });
+  } catch (error) {
+    await connection.rollback();
+    res.status(500).json({ success: false, message: "Failed to add product." });
+  } finally {
+    connection.release();
+  }
+};
+
+/////////////////////////////////////
+
+// 5. Update Product (Seller/Admin Only)
+export const updateProduct = async (req, res) => {
+  const { id } = req.params;
+  const { name, price, stock, description, image_url } = req.body;
+  const seller_id = req.user.id;
+  const role = req.user.role;
+
+  try {
+    // Check karo ki product usi seller ka hai ya user admin hai
+    const [product] = await pool.query(
+      "SELECT seller_id FROM products WHERE id = ?",
+      [id],
+    );
+
+    if (product.length === 0)
+      return res.status(404).json({ message: "Product not found" });
+
+    if (role !== "admin" && product[0].seller_id !== seller_id) {
+      return res
+        .status(403)
+        .json({ message: "You can only update your own products" });
+    }
+
+    await pool.query(
+      "UPDATE products SET name=?, price=?, description=?, image_url=? WHERE id=?",
+      [name, price, description, image_url, id],
+    );
+
+    // Stock update (product_stocks table)
+    if (stock !== undefined) {
+      await pool.query(
+        "UPDATE product_stocks SET quantity=? WHERE product_id=?",
+        [stock, id],
+      );
+    }
+
+    res.json({ success: true, message: "Product updated successfully!" });
+  } catch (error) {
+    res.status(500).json({ message: "Server Error" });
+  }
+};
+
+// 6. Delete Product (Seller/Admin Only)
+export const deleteProduct = async (req, res) => {
+  const { id } = req.params;
+  const seller_id = req.user.id;
+  const role = req.user.role;
+
+  try {
+    const [product] = await pool.query(
+      "SELECT seller_id FROM products WHERE id = ?",
+      [id],
+    );
+
+    if (product.length === 0)
+      return res.status(404).json({ message: "Product not found" });
+
+    if (role !== "admin" && product[0].seller_id !== seller_id) {
+      return res
+        .status(403)
+        .json({ message: "You can only delete your own products" });
+    }
+
+    await pool.query("DELETE FROM products WHERE id = ?", [id]);
+    res.json({ success: true, message: "Product deleted successfully!" });
+  } catch (error) {
+    res.status(500).json({ message: "Server Error" });
+  }
+};
+
+////////////////
